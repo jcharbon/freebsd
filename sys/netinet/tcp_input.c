@@ -2773,10 +2773,11 @@ process_ACK:
 				 */
 				if (so->so_rcv.sb_state & SBS_CANTRCVMORE) {
 					soisdisconnected(so);
-					tcp_timer_activate(tp, TT_2MSL,
-					    (tcp_fast_finwait2_recycle ?
-					    tcp_finwait2_timeout :
-					    TP_MAXIDLE(tp)));
+					if (!tcp_timer_active(tp, TT_2MSL))
+						tcp_timer_activate(tp, TT_2MSL,
+							(tcp_fast_finwait2_recycle ?
+							tcp_finwait2_timeout :
+							TP_MAXIDLE(tp)));
 				}
 				tcp_state_change(tp, TCPS_FIN_WAIT_2);
 			}

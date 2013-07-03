@@ -108,9 +108,19 @@ SYSCTL_INT(_net_inet_tcp, OID_AUTO, fast_finwait2_recycle, CTLFLAG_RW,
     &tcp_fast_finwait2_recycle, 0,
     "Recycle closed FIN_WAIT_2 connections faster");
 
+
+int    tcp_fast_finwait1_recycle = 0;
+SYSCTL_INT(_net_inet_tcp, OID_AUTO, fast_finwait1_recycle, CTLFLAG_RW,
+    &tcp_fast_finwait1_recycle, 0,
+    "Recycle closed FIN_WAIT_1 connections faster");
+
 int    tcp_finwait2_timeout;
 SYSCTL_PROC(_net_inet_tcp, OID_AUTO, finwait2_timeout, CTLTYPE_INT|CTLFLAG_RW,
     &tcp_finwait2_timeout, 0, sysctl_msec_to_ticks, "I", "FIN-WAIT2 timeout");
+
+int    tcp_finwait1_timeout;
+SYSCTL_PROC(_net_inet_tcp, OID_AUTO, finwait1_timeout, CTLTYPE_INT|CTLFLAG_RW,
+    &tcp_finwait1_timeout, 0, sysctl_msec_to_ticks, "I", "FIN-WAIT1 timeout");
 
 int	tcp_keepcnt = TCPTV_KEEPCNT;
 SYSCTL_INT(_net_inet_tcp, OID_AUTO, keepcnt, CTLFLAG_RW, &tcp_keepcnt, 0,
@@ -262,7 +272,8 @@ tcp_timer_2msl(void *xtp)
 	 * there's no point in hanging onto FIN_WAIT_2 socket. Just close it. 
 	 * Ignore fact that there were recent incoming segments.
 	 */
-	if (tcp_fast_finwait2_recycle && tp->t_state == TCPS_FIN_WAIT_2 &&
+	if (((tcp_fast_finwait2_recycle && tp->t_state == TCPS_FIN_WAIT_2) ||
+              tcp_fast_finwait1_recycle) &&
 	    tp->t_inpcb && tp->t_inpcb->inp_socket && 
 	    (tp->t_inpcb->inp_socket->so_rcv.sb_state & SBS_CANTRCVMORE)) {
 		TCPSTAT_INC(tcps_finwait2_drops);
