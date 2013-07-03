@@ -1962,7 +1962,8 @@ ixgbe_set_promisc(struct adapter *adapter)
 	if (ifp->if_flags & IFF_PROMISC) {
 		reg_rctl |= (IXGBE_FCTRL_UPE | IXGBE_FCTRL_MPE);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCTRL, reg_rctl);
-	} else if (ifp->if_flags & IFF_ALLMULTI) {
+	} else if ((ifp->if_flags & IFF_ALLMULTI) ||
+                   (ifp->if_capenable & IFCAP_NETMAP)) {
 		reg_rctl |= IXGBE_FCTRL_MPE;
 		reg_rctl &= ~IXGBE_FCTRL_UPE;
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCTRL, reg_rctl);
@@ -2021,7 +2022,8 @@ ixgbe_set_multi(struct adapter *adapter)
 	if (ifp->if_flags & IFF_PROMISC)
 		fctrl |= (IXGBE_FCTRL_UPE | IXGBE_FCTRL_MPE);
 	else if (mcnt >= MAX_NUM_MULTICAST_ADDRESSES ||
-	    ifp->if_flags & IFF_ALLMULTI) {
+	    ifp->if_flags & IFF_ALLMULTI ||
+        ifp->if_capenable & IFCAP_NETMAP) {
 		fctrl |= IXGBE_FCTRL_MPE;
 		fctrl &= ~IXGBE_FCTRL_UPE;
 	} else
