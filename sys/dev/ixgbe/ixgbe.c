@@ -1008,7 +1008,8 @@ ixgbe_ioctl(struct ifnet * ifp, u_long command, caddr_t data)
 	case SIOCSIFFLAGS:
 		IOCTL_DEBUGOUT("ioctl: SIOCSIFFLAGS (Set Interface Flags)");
 		IXGBE_CORE_LOCK(adapter);
-		if (ifp->if_flags & IFF_UP) {
+		if ((ifp->if_flags & IFF_UP) ||
+                    (ifp->if_capenable & IFCAP_NETMAP)) {
 			if ((ifp->if_drv_flags & IFF_DRV_RUNNING)) {
 				if ((ifp->if_flags ^ adapter->if_flags) &
 				    (IFF_PROMISC | IFF_ALLMULTI)) {
