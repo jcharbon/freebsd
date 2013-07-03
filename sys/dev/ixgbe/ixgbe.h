@@ -275,7 +275,7 @@ struct ixgbe_dma_alloc {
 struct ix_queue {
 	struct adapter		*adapter;
 	u32			msix;           /* This queue's MSIX vector */
-	u32			eims;           /* This queue's EIMS bit */
+	u32			cpu;            /* This queue's interruption cpuid */
 	u32			eitr_setting;
 	struct resource		*res;
 	void			*tag;
