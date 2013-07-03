@@ -80,7 +80,6 @@ ixgbe_netmap_lock_wrapper(struct ifnet *_a, int what, u_int queueid)
 {
 	struct adapter *adapter = _a->if_softc;
 
-	ASSERT(queueid < adapter->num_queues);
 	switch (what) {
 	case NETMAP_CORE_LOCK:
 		IXGBE_CORE_LOCK(adapter);
@@ -89,15 +88,19 @@ ixgbe_netmap_lock_wrapper(struct ifnet *_a, int what, u_int queueid)
 		IXGBE_CORE_UNLOCK(adapter);
 		break;
 	case NETMAP_TX_LOCK:
+		ASSERT(queueid < adapter->num_tx_queues);
 		IXGBE_TX_LOCK(&adapter->tx_rings[queueid]);
 		break;
 	case NETMAP_TX_UNLOCK:
+		ASSERT(queueid < adapter->num_tx_queues);
 		IXGBE_TX_UNLOCK(&adapter->tx_rings[queueid]);
 		break;
 	case NETMAP_RX_LOCK:
+		ASSERT(queueid < adapter->num_rx_queues);
 		IXGBE_RX_LOCK(&adapter->rx_rings[queueid]);
 		break;
 	case NETMAP_RX_UNLOCK:
+		ASSERT(queueid < adapter->num_rx_queues);
 		IXGBE_RX_UNLOCK(&adapter->rx_rings[queueid]);
 		break;
 	}
@@ -604,7 +607,9 @@ ixgbe_netmap_attach(struct adapter *adapter)
 	na.nm_rxsync = ixgbe_netmap_rxsync;
 	na.nm_lock = ixgbe_netmap_lock_wrapper;
 	na.nm_register = ixgbe_netmap_reg;
-	netmap_attach(&na, adapter->num_queues);
+	na.num_tx_rings = adapter->num_tx_queues;
+	na.num_rx_rings = adapter->num_rx_queues;
+	netmap_attach(&na, adapter->num_tx_queues);
 }	
 
 /* end of file */

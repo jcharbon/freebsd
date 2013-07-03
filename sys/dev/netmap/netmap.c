@@ -1822,10 +1822,10 @@ unlock_out:
 			break;
 		}
 		/* find the last ring to scan */
-		lim = priv->np_qlast;
-		if (lim == NETMAP_HW_RING)
-			lim = (cmd == NIOCTXSYNC) ?
-			    na->num_tx_rings : na->num_rx_rings;
+		lim = (cmd == NIOCTXSYNC) ? na->num_tx_rings : na->num_rx_rings;
+
+		if (priv->np_qlast != NETMAP_HW_RING && lim > priv->np_qlast)
+			lim = priv->np_qlast;
 
 		for (i = priv->np_qfirst; i < lim; i++) {
 			if (cmd == NIOCTXSYNC) {
@@ -2007,7 +2007,10 @@ netmap_poll(struct cdev *dev, int events, struct thread *td)
 	}
 #endif /* NM_BRIDGE */
 	if (priv->np_qlast != NETMAP_HW_RING) {
-		lim_tx = lim_rx = priv->np_qlast;
+                if (lim_tx > priv->np_qlast)
+                    lim_tx = priv->np_qlast;
+                if (lim_rx > priv->np_qlast)
+                    lim_rx = priv->np_qlast;
 	}
 
 	/*
@@ -2219,7 +2222,8 @@ netmap_attach(struct netmap_adapter *arg, int num_queues)
 	NETMAP_SET_CAPABLE(ifp);
 	if (na->num_tx_rings == 0)
 		na->num_tx_rings = num_queues;
-	na->num_rx_rings = num_queues;
+	if (na->num_rx_rings == 0)
+		na->num_rx_rings = num_queues;
 	na->refcount = na->na_single = na->na_multi = 0;
 	/* Core lock initialized here, others after netmap_if_new. */
 	mtx_init(&na->core_lock, "netmap core lock", MTX_NETWORK_LOCK, MTX_DEF);

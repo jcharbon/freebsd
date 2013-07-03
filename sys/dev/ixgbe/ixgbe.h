@@ -397,8 +397,8 @@ struct adapter {
 	eventhandler_tag 	vlan_detach;
 
 	u16			num_vlans;
-	u16			num_queues;
-
+	u16			num_tx_queues;
+	u16			num_rx_queues;
 	/*
 	** Shadow VFTA table, this is needed because
 	** the real vlan filter table gets cleared during
