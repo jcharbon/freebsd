@@ -4776,9 +4776,11 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 	*/
 	if (adapter->num_vlans == 0)
 		return;
+	const bool hwstrip = !!(ifp->if_capenable & IFCAP_VLAN_HWTAGGING);
+
 
 	/* Setup the queues for vlans */
-	for (int i = 0; i < adapter->num_rx_queues; i++) {
+	for (int i = 0; hwstrip && i < adapter->num_rx_queues; i++) {
 		rxr = &adapter->rx_rings[i];
 		/* On 82599 the VLAN enable is per/queue in RXDCTL */
 		if (hw->mac.type != ixgbe_mac_82598EB) {
@@ -4806,7 +4808,7 @@ ixgbe_setup_vlan_hw_support(struct adapter *adapter)
 		ctrl &= ~IXGBE_VLNCTRL_CFIEN;
 		ctrl |= IXGBE_VLNCTRL_VFE;
 	}
-	if (hw->mac.type == ixgbe_mac_82598EB)
+	if (hw->mac.type == ixgbe_mac_82598EB && hwstrip)
 		ctrl |= IXGBE_VLNCTRL_VME;
 	IXGBE_WRITE_REG(hw, IXGBE_VLNCTRL, ctrl);
 }
