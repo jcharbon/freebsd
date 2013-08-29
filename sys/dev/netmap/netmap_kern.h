@@ -201,6 +201,7 @@ struct netmap_adapter {
 	 * packets from the network stack when netmap is active.
 	 */
 	int     (*if_transmit)(struct ifnet *, struct mbuf *);
+	int	cap_restore;
 
 	/* references to the ifnet and device routines, used by
 	 * the generic netmap functions.

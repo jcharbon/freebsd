@@ -91,6 +91,8 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/bpf.h>		/* BIOCIMMEDIATE */
 #include <net/vnet.h>
+#include <net/ethernet.h>
+#include <net/if_vlan_var.h>
 #include <machine/bus.h>	/* bus_dmamap_* */
 
 MALLOC_DEFINE(M_NETMAP, "netmap", "Network memory map");
@@ -558,6 +560,8 @@ netmap_dtor_locked(void *data)
 		 * away. This means we cannot have any pending poll()
 		 * or interrupt routine operating on the structure.
 		 */
+		ifp->if_capenable |= na->cap_restore;
+
 		na->nm_register(ifp, 0); /* off, clear IFCAP_NETMAP */
 		/* Wake up any sleeping threads. netmap_poll will
 		 * then return POLLERR
@@ -1383,6 +1387,16 @@ netmap_do_regif(struct netmap_priv_d *priv, struct ifnet *ifp,
 			SWNA(ifp)->tx_rings = &na->tx_rings[na->num_tx_rings];
 			SWNA(ifp)->rx_rings = &na->rx_rings[na->num_rx_rings];
 		}
+		/* We do not support passing 802.1q VLAN IDs through the rings
+		 * so disable hardware tag stripping and generation, as well
+		 * as TSO over a VLAN interface.
+		 */
+		const unsigned inhibit_cap = IFCAP_VLAN_HWTAGGING |
+			IFCAP_VLAN_HWTSO | IFCAP_VLAN_HWCSUM | IFCAP_TSO |
+			IFCAP_RXCSUM | IFCAP_TXCSUM | IFCAP_LRO;
+		na->cap_restore = ifp->if_capenable & inhibit_cap;
+		ifp->if_capenable &= ~inhibit_cap;
+
 		error = na->nm_register(ifp, 1); /* mode on */
 #ifdef NM_BRIDGE
 		if (!error)
@@ -1394,7 +1408,7 @@ netmap_do_regif(struct netmap_priv_d *priv, struct ifnet *ifp,
 			netmap_if_free(nifp);
 			nifp = NULL;
 		}
-
+		VLAN_CAPABILITIES(ifp);
 	}
 out:
 	*err = error;
