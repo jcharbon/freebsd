@@ -1855,7 +1855,10 @@ unlock_out:
 					    kring->nr_hwcur);
 			} else {
 				na->nm_rxsync(ifp, i, 1 /* do lock */);
-				microtime(&na->rx_rings[i].ring->ts);
+				if (netmap_no_timestamp == 0 ||
+					na->rx_rings[i].ring->flags & NR_TIMESTAMP) {
+					microtime(&na->rx_rings[i].ring->ts);
+				}
 			}
 		}
 
