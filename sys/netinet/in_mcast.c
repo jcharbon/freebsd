@@ -1448,7 +1448,7 @@ inp_block_unblock_source(struct inpcb *inp, struct sockopt *sopt)
 	error = inm_merge(inm, imf);
 	if (error) {
 		CTR1(KTR_IGMPV3, "%s: failed to merge inm state", __func__);
-		goto out_imf_rollback;
+		goto out_in_multi_locked;
 	}
 
 	CTR1(KTR_IGMPV3, "%s: doing igmp downcall", __func__);
@@ -1456,6 +1456,7 @@ inp_block_unblock_source(struct inpcb *inp, struct sockopt *sopt)
 	if (error)
 		CTR1(KTR_IGMPV3, "%s: failed igmp downcall", __func__);
 
+out_in_multi_locked:
 	IN_MULTI_UNLOCK();
 
 out_imf_rollback:
@@ -2124,8 +2125,10 @@ inp_join_group(struct inpcb *inp, struct sockopt *sopt)
 	if (is_new) {
 		error = in_joingroup_locked(ifp, &gsa->sin.sin_addr, imf,
 		    &inm);
-		if (error)
+		if (error) {
+			IN_MULTI_UNLOCK();
 			goto out_imo_free;
+		}
 		imo->imo_membership[idx] = inm;
 	} else {
 		CTR1(KTR_IGMPV3, "%s: merge inm state", __func__);
@@ -2133,20 +2136,20 @@ inp_join_group(struct inpcb *inp, struct sockopt *sopt)
 		if (error) {
 			CTR1(KTR_IGMPV3, "%s: failed to merge inm state",
 			    __func__);
-			goto out_imf_rollback;
+			goto out_in_multi_locked;
 		}
 		CTR1(KTR_IGMPV3, "%s: doing igmp downcall", __func__);
 		error = igmp_change_state(inm);
 		if (error) {
 			CTR1(KTR_IGMPV3, "%s: failed igmp downcall",
 			    __func__);
-			goto out_imf_rollback;
+			goto out_in_multi_locked;
 		}
 	}
 
+out_in_multi_locked:
 	IN_MULTI_UNLOCK();
 
-out_imf_rollback:
 	INP_WLOCK_ASSERT(inp);
 	if (error) {
 		imf_rollback(imf);
@@ -2350,7 +2353,7 @@ inp_leave_group(struct inpcb *inp, struct sockopt *sopt)
 		if (error) {
 			CTR1(KTR_IGMPV3, "%s: failed to merge inm state",
 			    __func__);
-			goto out_imf_rollback;
+			goto out_in_multi_locked;
 		}
 
 		CTR1(KTR_IGMPV3, "%s: doing igmp downcall", __func__);
@@ -2361,9 +2364,9 @@ inp_leave_group(struct inpcb *inp, struct sockopt *sopt)
 		}
 	}
 
+out_in_multi_locked:
 	IN_MULTI_UNLOCK();
 
-out_imf_rollback:
 	if (error)
 		imf_rollback(imf);
 	else
@@ -2597,7 +2600,7 @@ inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 	error = inm_merge(inm, imf);
 	if (error) {
 		CTR1(KTR_IGMPV3, "%s: failed to merge inm state", __func__);
-		goto out_imf_rollback;
+		goto out_in_multi_locked;
 	}
 
 	CTR1(KTR_IGMPV3, "%s: doing igmp downcall", __func__);
@@ -2605,6 +2608,7 @@ inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 	if (error)
 		CTR1(KTR_IGMPV3, "%s: failed igmp downcall", __func__);
 
+out_in_multi_locked:
 	IN_MULTI_UNLOCK();
 
 out_imf_rollback:
