@@ -2126,6 +2126,8 @@ inp_join_group(struct inpcb *inp, struct sockopt *sopt)
 		error = in_joingroup_locked(ifp, &gsa->sin.sin_addr, imf,
 		    &inm);
 		if (error) {
+                        CTR1(KTR_IGMPV3, "%s: in_joingroup_locked failed", 
+                            __func__);
 			IN_MULTI_UNLOCK();
 			goto out_imo_free;
 		}
