@@ -470,6 +470,17 @@ If the driver offers user-configurable VLAN support, disable
 reception of extended frames, tag processing in hardware,
 frame filtering in hardware, or TSO on VLAN,
 respectively.
+.It Cm pnetmap
+If the driver supports
+.Xr netmap 4 ,
+enable netmap persistent mode on the interface, the device will stay
+in netmap mode until this flag is disabled.
+.It Fl pnetmap
+If the driver supports
+.Xr netmap 4 ,
+disable netmap persistent mode on the interface, the device will exit
+netmap mode when the last netmap client unregisters or immediately if
+there are no clients.
 .It Cm vnet Ar jail
 Move the interface to the
 .Xr jail 8 ,

@@ -82,6 +82,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/poll.h>
 #include <sys/proc.h>
 #include <sys/rwlock.h>
+#include <sys/fcntl.h>
 #include <vm/vm.h>	/* vtophys */
 #include <vm/pmap.h>	/* vtophys */
 #include <sys/socket.h> /* sockaddrs */
@@ -678,9 +679,10 @@ static void
 netmap_dtor(void *data)
 {
 	struct netmap_priv_d *priv = data;
-	struct ifnet *ifp = priv->np_ifp;
+	struct ifnet *ifp;
 
 	NMA_LOCK();
+	ifp = priv->np_ifp;
 	if (ifp) {
 		struct netmap_adapter *na = NA(ifp);
 
@@ -701,7 +703,6 @@ netmap_dtor(void *data)
 	bzero(priv, sizeof(*priv));	/* XXX for safety */
 	free(priv, M_DEVBUF);
 }
-
 
 #ifdef __FreeBSD__
 #include <vm/vm.h>
@@ -1665,11 +1666,13 @@ netmap_ioctl(struct cdev *dev, u_long cmd, caddr_t data,
 	struct nmreq *nmr = (struct nmreq *) data;
 	struct netmap_adapter *na;
 	int error;
-	u_int i, lim;
+	u_int i, lim, reg_flags_set = 0, reg_flags_clear = 0;
 	struct netmap_if *nifp;
 
+	if ((fflag & FWRITE) == 0 && cmd != NIOCGINFO)
+		return (EPERM);
+
 	(void)dev;	/* UNUSED */
-	(void)fflag;	/* UNUSED */
 #ifdef linux
 #define devfs_get_cdevpriv(pp)				\
 	({ *(struct netmap_priv_d **)pp = ((struct file *)td)->private_data; 	\
@@ -1734,6 +1737,9 @@ netmap_ioctl(struct cdev *dev, u_long cmd, caddr_t data,
 		nmr->nr_tx_rings = na->num_tx_rings;
 		nmr->nr_rx_slots = na->num_rx_desc;
 		nmr->nr_tx_slots = na->num_tx_desc;
+		nmr->nr_cmd  = NETMAP_REG_WITH_FLAGS;
+		nmr->nr_arg1 = na->flags;
+		nmr->nr_arg2 = 0;
 		nm_if_rele(ifp);	/* return the refcount */
 		break;
 
@@ -1748,9 +1754,39 @@ netmap_ioctl(struct cdev *dev, u_long cmd, caddr_t data,
 		if (i == NETMAP_BDG_ATTACH || i == NETMAP_BDG_DETACH) {
 			error = netmap_bdg_ctl(nmr, NULL);
 			break;
+		} else if (i == NETMAP_REG_WITH_FLAGS) {
+			reg_flags_set   = nmr->nr_arg1;
+			reg_flags_clear = nmr->nr_arg2;
+
+			if (reg_flags_clear & NETMAP_PERSIST) {
+				struct netmap_priv_d *perm = NULL;
+
+				error = get_ifp(nmr, &ifp); /* keep reference */
+				if (error)
+					break;
+
+				na = NA(ifp); /* retrieve netmap adapter */
+
+				na->nm_lock(ifp, NETMAP_REG_LOCK, 0);
+				if (na->persistent_registration) {
+					na->flags ^= NETMAP_PERSIST;
+					perm = na->persistent_registration;
+					na->persistent_registration = NULL;
+				}
+				nmr->nr_arg1 = na->flags;
+				na->nm_lock(ifp, NETMAP_REG_UNLOCK, 0);
+
+
+				if (perm)
+					netmap_dtor(perm);
+
+				if_rele(ifp);
+
+				break;
+			}
 		} else if (i != 0) {
 			D("nr_cmd must be 0 not %d", i);
-			error = EINVAL;
+
 			break;
 		}
 
@@ -1789,11 +1825,33 @@ unlock_out:
 		 * np_nifp != NULL without locking
 		 */
 		wmb(); /* make sure previous writes are visible to all CPUs */
-		priv->np_nifp = nifp;
+		na = NA(ifp);
+		if (reg_flags_set & NETMAP_PERSIST &&
+			(0 == (na->flags & NETMAP_PERSIST))) {
+		    struct netmap_priv_d *new_priv;
+
+			new_priv = malloc(sizeof(struct netmap_priv_d), M_DEVBUF,
+                  M_NOWAIT | M_ZERO);
+
+		    if (new_priv == NULL) {
+				error = ENOMEM;
+				goto unlock_out;
+			}
+
+			new_priv->np_ifp  = priv->np_ifp;
+			new_priv->np_nifp = priv->np_nifp;
+			new_priv->ref_done = priv->ref_done;
+			priv->np_ifp = NULL;
+			priv->np_nifp = NULL;
+			priv->ref_done = 0;
+			na->persistent_registration = new_priv;
+			na->flags |= NETMAP_PERSIST;
+		} else {
+			priv->np_nifp = nifp;
+		}
 		NMA_UNLOCK();
 
 		/* return the offset of the netmap_if object */
-		na = NA(ifp); /* retrieve netmap adapter */
 		nmr->nr_rx_rings = na->num_rx_rings;
 		nmr->nr_tx_rings = na->num_tx_rings;
 		nmr->nr_rx_slots = na->num_rx_desc;
@@ -3282,7 +3340,7 @@ netmap_init(void)
 		return (error);
 	}
 	printf("netmap: loaded module\n");
-	netmap_dev = make_dev(&netmap_cdevsw, 0, UID_ROOT, GID_WHEEL, 0660,
+	netmap_dev = make_dev(&netmap_cdevsw, 0, UID_ROOT, GID_WHEEL, 0664,
 			      "netmap");
 
 #ifdef NM_BRIDGE

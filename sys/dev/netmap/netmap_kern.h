@@ -148,6 +148,9 @@ struct netmap_kring {
 	NM_LOCK_T q_lock;	/* used if no device lock available */
 } __attribute__((__aligned__(64)));
 
+
+struct netmap_priv_d;
+
 /*
  * This struct extends the 'struct adapter' (or
  * equivalent) device descriptor. It contains all fields needed to
@@ -188,6 +191,8 @@ struct netmap_adapter {
 	u_int num_tx_desc; /* number of descriptor in each queue */
 	u_int num_rx_desc;
 
+	u_int	flags;
+	struct netmap_priv_d *persistent_registration;
 	/* tx_rings and rx_rings are private but allocated
 	 * as a contiguous chunk of memory. Each array has
 	 * N+1 entries, for the adapter queues and for the host queue.

@@ -329,8 +329,10 @@ struct nmreq {
 #define NETMAP_BDG_DETACH	2	/* detach the NIC */
 #define NETMAP_BDG_LOOKUP_REG	3	/* register lookup function */
 #define NETMAP_BDG_LIST		4	/* get bridge's info */
+#define NETMAP_REG_WITH_FLAGS 32 /* provide extra registration flags */
 	uint16_t	nr_arg1;
 #define NETMAP_BDG_HOST		1	/* attach the host stack on ATTACH */
+#define NETMAP_PERSIST 0x1
 	uint16_t	nr_arg2;
 	uint32_t	spare2[3];
 };

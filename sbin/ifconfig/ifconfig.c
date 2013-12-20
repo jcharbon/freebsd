@@ -54,6 +54,7 @@ static const char rcsid[] =
 #include <net/if_dl.h>
 #include <net/if_types.h>
 #include <net/route.h>
+#include <net/netmap.h>
 
 /* IP */
 #include <netinet/in.h>
@@ -812,6 +813,40 @@ setifflags(const char *vname, int value, int s, const struct afswtch *afp)
 		Perror(vname);
 }
 
+static void
+setnetmap(const char *vname, int value, int s, const struct afswtch *afp)
+{
+	struct nmreq req;
+	int fd = -1;
+
+	memset(&req, 0, sizeof(req));
+	strncpy(req.nr_name, name, sizeof(req.nr_name));
+
+	req.nr_version = NETMAP_API;
+	req.nr_ringid = NETMAP_SW_RING;
+
+	if ((fd = open("/dev/netmap", O_RDWR)) < 0) {
+		Perror(vname);
+		exit(1);
+	}
+
+	req.nr_cmd = NETMAP_REG_WITH_FLAGS;
+
+	if (value == NETMAP_PERSIST) {
+		req.nr_arg1 = NETMAP_PERSIST;
+	} else if (value == -NETMAP_PERSIST) {
+		req.nr_arg2 = NETMAP_PERSIST;
+	}
+
+	if(ioctl(fd, NIOCREGIF, &req) < 0) {
+		Perror(vname);
+		exit(1);
+	}
+
+	close(fd);
+}
+
+
 void
 setifcap(const char *vname, int value, int s, const struct afswtch *afp)
 {
@@ -977,6 +1012,18 @@ status(const struct afswtch *afp, const struct sockaddr_dl *sdl,
 		if (ifr.ifr_curcap != 0) {
 			printb("\toptions", ifr.ifr_curcap, IFCAPBITS);
 			putchar('\n');
+		}
+		if (ifr.ifr_reqcap & IFCAP_NETMAP) {
+			struct nmreq req;
+			memset(&req, 0, sizeof(req));
+			strncpy(req.nr_name, name, sizeof(req.nr_name));
+
+			req.nr_version = NETMAP_API;
+			req.nr_cmd = NETMAP_REG_WITH_FLAGS;
+			if(0 == ioctl(open("/dev/netmap", O_RDONLY), NIOCGINFO, &req)) {
+				printb("\tnetmap", req.nr_arg1, "\020\1PERSIST");
+				putchar('\n');
+			}
 		}
 		if (supmedia && ifr.ifr_reqcap != 0) {
 			printb("\tcapabilities", ifr.ifr_reqcap, IFCAPBITS);
@@ -1227,6 +1274,8 @@ static struct cmd basic_cmds[] = {
 	DEF_CMD("normal",	-IFF_LINK0,	setifflags),
 	DEF_CMD("compress",	IFF_LINK0,	setifflags),
 	DEF_CMD("noicmp",	IFF_LINK1,	setifflags),
+	DEF_CMD("pnetmap",	NETMAP_PERSIST,		setnetmap),
+	DEF_CMD("-pnetmap",	-NETMAP_PERSIST,	setnetmap),
 	DEF_CMD_ARG("mtu",			setifmtu),
 	DEF_CMD_ARG("name",			setifname),
 };
