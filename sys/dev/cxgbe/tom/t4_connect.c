@@ -208,12 +208,12 @@ do_act_open_rpl(struct sge_iq *iq, const struct rss_header *rss,
 
 	rc = act_open_rpl_status_to_errno(status);
 	if (rc != EAGAIN)
-		INP_INFO_WLOCK(&V_tcbinfo);
+		INP_INFO_RLOCK(&V_tcbinfo);
 	INP_WLOCK(inp);
 	toe_connect_failed(tod, inp, rc);
 	final_cpl_received(toep);	/* unlocks inp */
 	if (rc != EAGAIN)
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 
 	return (0);
 }

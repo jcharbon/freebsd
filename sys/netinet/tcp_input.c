@@ -589,7 +589,7 @@ tcp_input(struct mbuf *m, int off0)
 	char *s = NULL;			/* address and port logging */
 	int ti_locked;
 #define	TI_UNLOCKED	1
-#define	TI_WLOCKED	2
+#define	TI_RLOCKED	2
 
 #ifdef TCPDEBUG
 	/*
@@ -775,8 +775,8 @@ tcp_input(struct mbuf *m, int off0)
 	 * connection in TIMEWAIT and SYNs not targeting a listening socket.
 	 */
 	if ((thflags & (TH_FIN | TH_RST)) != 0) {
-		INP_INFO_WLOCK(&V_tcbinfo);
-		ti_locked = TI_WLOCKED;
+		INP_INFO_RLOCK(&V_tcbinfo);
+		ti_locked = TI_RLOCKED;
 	} else
 		ti_locked = TI_UNLOCKED;
 
@@ -798,8 +798,8 @@ tcp_input(struct mbuf *m, int off0)
 
 findpcb:
 #ifdef INVARIANTS
-	if (ti_locked == TI_WLOCKED) {
-		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+	if (ti_locked == TI_RLOCKED) {
+		INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 	} else {
 		INP_INFO_UNLOCK_ASSERT(&V_tcbinfo);
 	}
@@ -950,20 +950,20 @@ findpcb:
 relocked:
 	if (inp->inp_flags & INP_TIMEWAIT) {
 		if (ti_locked == TI_UNLOCKED) {
-			if (INP_INFO_TRY_WLOCK(&V_tcbinfo) == 0) {
+			if (INP_INFO_TRY_RLOCK(&V_tcbinfo) == 0) {
 				in_pcbref(inp);
 				INP_WUNLOCK(inp);
-				INP_INFO_WLOCK(&V_tcbinfo);
-				ti_locked = TI_WLOCKED;
+				INP_INFO_RLOCK(&V_tcbinfo);
+				ti_locked = TI_RLOCKED;
 				INP_WLOCK(inp);
 				if (in_pcbrele_wlocked(inp)) {
 					inp = NULL;
 					goto findpcb;
 				}
 			} else
-				ti_locked = TI_WLOCKED;
+				ti_locked = TI_RLOCKED;
 		}
-		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 
 		if (thflags & TH_SYN)
 			tcp_dooptions(&to, optp, optlen, TO_SYN);
@@ -972,7 +972,7 @@ relocked:
 		 */
 		if (tcp_twcheck(inp, &to, th, m, tlen))
 			goto findpcb;
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 		return;
 	}
 	/*
@@ -1003,16 +1003,16 @@ relocked:
 	 */
 #ifdef INVARIANTS
 	if ((thflags & (TH_FIN | TH_RST)) != 0)
-		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 #endif
 	if (!((tp->t_state == TCPS_ESTABLISHED && (thflags & TH_SYN) == 0) ||
 	    (tp->t_state == TCPS_LISTEN && (thflags & TH_SYN)))) {
 		if (ti_locked == TI_UNLOCKED) {
-			if (INP_INFO_TRY_WLOCK(&V_tcbinfo) == 0) {
+			if (INP_INFO_TRY_RLOCK(&V_tcbinfo) == 0) {
 				in_pcbref(inp);
 				INP_WUNLOCK(inp);
-				INP_INFO_WLOCK(&V_tcbinfo);
-				ti_locked = TI_WLOCKED;
+				INP_INFO_RLOCK(&V_tcbinfo);
+				ti_locked = TI_RLOCKED;
 				INP_WLOCK(inp);
 				if (in_pcbrele_wlocked(inp)) {
 					inp = NULL;
@@ -1020,9 +1020,9 @@ relocked:
 				}
 				goto relocked;
 			} else
-				ti_locked = TI_WLOCKED;
+				ti_locked = TI_RLOCKED;
 		}
-		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 	}
 
 #ifdef MAC
@@ -1077,7 +1077,7 @@ relocked:
 		 */
 		if ((thflags & (TH_RST|TH_ACK|TH_SYN)) == TH_ACK) {
 
-			INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+			INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 			/*
 			 * Parse the TCP options here because
 			 * syncookies need access to the reflected
@@ -1129,7 +1129,11 @@ relocked:
 			 */
 			INP_WUNLOCK(inp);	/* listen socket */
 			inp = sotoinpcb(so);
-			INP_WLOCK(inp);		/* new connection */
+			/*
+			 * New connection is already locked by
+			 * syncache_expand().
+			 */
+			INP_WLOCK_ASSERT(inp);
 			tp = intotcpcb(inp);
 			KASSERT(tp->t_state == TCPS_SYN_RECEIVED,
 			    ("%s: ", __func__));
@@ -1360,8 +1364,8 @@ relocked:
 		 * Entry added to syncache and mbuf consumed.
 		 * Only the listen socket is unlocked by syncache_add().
 		 */
-		if (ti_locked == TI_WLOCKED) {
-			INP_INFO_WUNLOCK(&V_tcbinfo);
+		if (ti_locked == TI_RLOCKED) {
+			INP_INFO_RUNLOCK(&V_tcbinfo);
 			ti_locked = TI_UNLOCKED;
 		}
 		INP_INFO_UNLOCK_ASSERT(&V_tcbinfo);
@@ -1410,8 +1414,8 @@ relocked:
 dropwithreset:
 	TCP_PROBE5(receive, NULL, tp, m->m_data, tp, th);
 
-	if (ti_locked == TI_WLOCKED) {
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+	if (ti_locked == TI_RLOCKED) {
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 		ti_locked = TI_UNLOCKED;
 	}
 #ifdef INVARIANTS
@@ -1434,8 +1438,8 @@ dropunlock:
 	if (m != NULL)
 		TCP_PROBE5(receive, NULL, tp, m->m_data, tp, th);
 
-	if (ti_locked == TI_WLOCKED) {
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+	if (ti_locked == TI_RLOCKED) {
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 		ti_locked = TI_UNLOCKED;
 	}
 #ifdef INVARIANTS
@@ -1491,13 +1495,13 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 */
 	if ((thflags & (TH_SYN | TH_FIN | TH_RST)) != 0 ||
 	    tp->t_state != TCPS_ESTABLISHED) {
-		KASSERT(ti_locked == TI_WLOCKED, ("%s ti_locked %d for "
+		KASSERT(ti_locked == TI_RLOCKED, ("%s ti_locked %d for "
 		    "SYN/FIN/RST/!EST", __func__, ti_locked));
-		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 	} else {
 #ifdef INVARIANTS
-		if (ti_locked == TI_WLOCKED)
-			INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+		if (ti_locked == TI_RLOCKED)
+			INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 		else {
 			KASSERT(ti_locked == TI_UNLOCKED, ("%s: EST "
 			    "ti_locked: %d", __func__, ti_locked));
@@ -1666,8 +1670,8 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 				/*
 				 * This is a pure ack for outstanding data.
 				 */
-				if (ti_locked == TI_WLOCKED)
-					INP_INFO_WUNLOCK(&V_tcbinfo);
+				if (ti_locked == TI_RLOCKED)
+					INP_INFO_RUNLOCK(&V_tcbinfo);
 				ti_locked = TI_UNLOCKED;
 
 				TCPSTAT_INC(tcps_predack);
@@ -1770,8 +1774,8 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 			 * nothing on the reassembly queue and we have enough
 			 * buffer space to take it.
 			 */
-			if (ti_locked == TI_WLOCKED)
-				INP_INFO_WUNLOCK(&V_tcbinfo);
+			if (ti_locked == TI_RLOCKED)
+				INP_INFO_RUNLOCK(&V_tcbinfo);
 			ti_locked = TI_UNLOCKED;
 
 			/* Clean receiver SACK report if present */
@@ -2006,9 +2010,9 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 			tcp_state_change(tp, TCPS_SYN_RECEIVED);
 		}
 
-		KASSERT(ti_locked == TI_WLOCKED, ("%s: trimthenstep6: "
+		KASSERT(ti_locked == TI_RLOCKED, ("%s: trimthenstep6: "
 		    "ti_locked %d", __func__, ti_locked));
-		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 		INP_WLOCK_ASSERT(tp->t_inpcb);
 
 		/*
@@ -2136,10 +2140,10 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 			case TCPS_CLOSE_WAIT:
 				so->so_error = ECONNRESET;
 			close:
-				KASSERT(ti_locked == TI_WLOCKED,
+				KASSERT(ti_locked == TI_RLOCKED,
 				    ("tcp_do_segment: TH_RST 1 ti_locked %d",
 				    ti_locked));
-				INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+				INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 
 				tcp_state_change(tp, TCPS_CLOSED);
 				TCPSTAT_INC(tcps_drops);
@@ -2148,10 +2152,10 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 
 			case TCPS_CLOSING:
 			case TCPS_LAST_ACK:
-				KASSERT(ti_locked == TI_WLOCKED,
+				KASSERT(ti_locked == TI_RLOCKED,
 				    ("tcp_do_segment: TH_RST 2 ti_locked %d",
 				    ti_locked));
-				INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+				INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 
 				tp = tcp_close(tp);
 				break;
@@ -2255,9 +2259,9 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 */
 	if ((so->so_state & SS_NOFDREF) &&
 	    tp->t_state > TCPS_CLOSE_WAIT && tlen) {
-		KASSERT(ti_locked == TI_WLOCKED, ("%s: SS_NOFDEREF && "
+		KASSERT(ti_locked == TI_RLOCKED, ("%s: SS_NOFDEREF && "
 		    "CLOSE_WAIT && tlen ti_locked %d", __func__, ti_locked));
-		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 
 		if ((s = tcp_log_addrs(inc, th, NULL, NULL))) {
 			log(LOG_DEBUG, "%s; %s: %s: Received %d bytes of data "
@@ -2331,9 +2335,9 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 * error and we send an RST and drop the connection.
 	 */
 	if (thflags & TH_SYN) {
-		KASSERT(ti_locked == TI_WLOCKED,
+		KASSERT(ti_locked == TI_RLOCKED,
 		    ("tcp_do_segment: TH_SYN ti_locked %d", ti_locked));
-		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+		INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 
 		tp = tcp_drop(tp, ECONNRESET);
 		rstreason = BANDLIM_UNLIMITED;
@@ -2790,9 +2794,9 @@ process_ACK:
 		 */
 		case TCPS_CLOSING:
 			if (ourfinisacked) {
-				INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+				INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 				tcp_twstart(tp);
-				INP_INFO_WUNLOCK(&V_tcbinfo);
+				INP_INFO_RUNLOCK(&V_tcbinfo);
 				m_freem(m);
 				return;
 			}
@@ -2806,7 +2810,7 @@ process_ACK:
 		 */
 		case TCPS_LAST_ACK:
 			if (ourfinisacked) {
-				INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+				INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
 				tp = tcp_close(tp);
 				goto drop;
 			}
@@ -3021,18 +3025,18 @@ dodata:							/* XXX */
 		 * standard timers.
 		 */
 		case TCPS_FIN_WAIT_2:
-			INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
-			KASSERT(ti_locked == TI_WLOCKED, ("%s: dodata "
+			INP_INFO_RLOCK_ASSERT(&V_tcbinfo);
+			KASSERT(ti_locked == TI_RLOCKED, ("%s: dodata "
 			    "TCP_FIN_WAIT_2 ti_locked: %d", __func__,
 			    ti_locked));
 
 			tcp_twstart(tp);
-			INP_INFO_WUNLOCK(&V_tcbinfo);
+			INP_INFO_RUNLOCK(&V_tcbinfo);
 			return;
 		}
 	}
-	if (ti_locked == TI_WLOCKED)
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+	if (ti_locked == TI_RLOCKED)
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 	ti_locked = TI_UNLOCKED;
 
 #ifdef TCPDEBUG
@@ -3087,8 +3091,8 @@ dropafterack:
 		tcp_trace(TA_DROP, ostate, tp, (void *)tcp_saveipgen,
 			  &tcp_savetcp, 0);
 #endif
-	if (ti_locked == TI_WLOCKED)
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+	if (ti_locked == TI_RLOCKED)
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 	ti_locked = TI_UNLOCKED;
 
 	tp->t_flags |= TF_ACKNOW;
@@ -3098,8 +3102,8 @@ dropafterack:
 	return;
 
 dropwithreset:
-	if (ti_locked == TI_WLOCKED)
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+	if (ti_locked == TI_RLOCKED)
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 	ti_locked = TI_UNLOCKED;
 
 	if (tp != NULL) {
@@ -3110,8 +3114,8 @@ dropwithreset:
 	return;
 
 drop:
-	if (ti_locked == TI_WLOCKED) {
-		INP_INFO_WUNLOCK(&V_tcbinfo);
+	if (ti_locked == TI_RLOCKED) {
+		INP_INFO_RUNLOCK(&V_tcbinfo);
 		ti_locked = TI_UNLOCKED;
 	}
 #ifdef INVARIANTS
