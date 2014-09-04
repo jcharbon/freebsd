@@ -353,7 +353,6 @@ struct tcptw {
 	u_int		t_starttime;
 	int		tw_time;
 	TAILQ_ENTRY(tcptw) tw_2msl;
-	u_int		tw_refcount;	/* refcount */
 };
 
 #define	intotcpcb(ip)	((struct tcpcb *)(ip)->inp_ppcb)
@@ -649,7 +648,7 @@ void	 tcp_twstart(struct tcpcb *);
 #if 0
 int	 tcp_twrecycleable(struct tcptw *tw);
 #endif
-void	 tcp_twclose(struct tcptw *_tw, int _reuse);
+void	 tcp_twclose(struct tcptw *, int);
 void	 tcp_ctlinput(int, struct sockaddr *, void *);
 int	 tcp_ctloutput(struct socket *, struct sockopt *);
 struct tcpcb *
