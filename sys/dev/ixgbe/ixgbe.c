@@ -4170,7 +4170,7 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 	struct	rx_ring	*rxr = adapter->rx_rings;
 	struct ixgbe_hw	*hw = &adapter->hw;
 	struct ifnet   *ifp = adapter->ifp;
-	u32		bufsz, rxctrl, fctrl, srrctl, rxcsum;
+	u32		bufsz, rxctrl, fctrl, srrctl, rxcsum, rfctl;
 	u32		reta, mrqc = 0, hlreg, random[10];
 
 
@@ -4287,6 +4287,10 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 		rxcsum |= IXGBE_RXCSUM_IPPCSE;
 
 	IXGBE_WRITE_REG(hw, IXGBE_RXCSUM, rxcsum);
+
+	rfctl = IXGBE_READ_REG(hw, IXGBE_RFCTL);
+	rfctl |= IXGBE_RFCTL_RSC_DIS;
+	IXGBE_WRITE_REG(hw, IXGBE_RFCTL, rfctl);
 
 	return;
 }
@@ -4631,11 +4635,11 @@ next_desc:
 		}
 	}
 
+	rxr->next_to_check = i;
+
 	/* Refresh any remaining buf structs */
 	if (ixgbe_rx_unrefreshed(rxr))
 		ixgbe_refresh_mbufs(rxr, i);
-
-	rxr->next_to_check = i;
 
 	/*
 	 * Flush any outstanding LRO work
