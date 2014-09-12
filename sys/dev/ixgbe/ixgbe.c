@@ -1270,6 +1270,16 @@ ixgbe_init_locked(struct adapter *adapter)
 		IXGBE_WRITE_REG(hw, IXGBE_RDT(i), adapter->num_rx_desc - 1);
 	}
 
+#ifdef IXGBE_FDIR
+	/* Init Flow director */
+	if (hw->mac.type != ixgbe_mac_82598EB) {
+		u32 hdrm = 32 << fdir_pballoc;
+
+		hw->mac.ops.setup_rxpba(hw, 0, hdrm, PBA_STRATEGY_EQUAL);
+		ixgbe_init_fdir_signature_82599(&adapter->hw, fdir_pballoc);
+	}
+#endif
+
 	/* Enable Receive engine */
 	rxctrl = IXGBE_READ_REG(hw, IXGBE_RXCTRL);
 	if (hw->mac.type == ixgbe_mac_82598EB)
@@ -1295,15 +1305,6 @@ ixgbe_init_locked(struct adapter *adapter)
 		IXGBE_WRITE_REG(hw, IXGBE_EIAM, IXGBE_EICS_RTX_QUEUE);
 	}
 
-#ifdef IXGBE_FDIR
-	/* Init Flow director */
-	if (hw->mac.type != ixgbe_mac_82598EB) {
-		u32 hdrm = 32 << fdir_pballoc;
-
-		hw->mac.ops.setup_rxpba(hw, 0, hdrm, PBA_STRATEGY_EQUAL);
-		ixgbe_init_fdir_signature_82599(&adapter->hw, fdir_pballoc);
-	}
-#endif
 
 	/*
 	** Check on any SFP devices that
