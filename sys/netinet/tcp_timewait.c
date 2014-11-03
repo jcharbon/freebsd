@@ -99,6 +99,11 @@ static int	maxtcptw;
  * currently in the TIME_WAIT state.  The queue pointers, including the
  * queue pointers in each tcptw structure, are protected using the global
  * timewait lock, which must be held over queue iteration and modification.
+ *
+ * Rules on tcptw usage:
+ *  - a inpcb is always freed _after_ its tcptw
+ *  - a tcptw relies on its inpcb reference counting for memory stability
+ *  - a tcptw is dereferenceable only while its inpcb is locked
  */
 static VNET_DEFINE(TAILQ_HEAD(, tcptw), twq_2msl);
 #define	V_twq_2msl		VNET(twq_2msl)
@@ -246,7 +251,15 @@ tcp_twstart(struct tcpcb *tp)
 
 	tw = uma_zalloc(V_tcptw_zone, M_NOWAIT);
 	if (tw == NULL) {
-		tw = tcp_tw_2msl_reuse();
+		/*
+		 * Reached limit on total number of TIMEWAIT connections
+		 * allowed. Remove a connection from TIMEWAIT queue in LRU
+		 * fashion to make room for this connection.
+		 *
+		 * pcbinfo lock is needed here to prevent deadlock as
+		 * two inpcb locks can be acquired simultaneously.
+		 */
+		tw = tcp_tw_2msl_scan(1);
 		if (tw == NULL) {
 			tp = tcp_close(tp);
 			if (tp != NULL)
@@ -254,11 +267,11 @@ tcp_twstart(struct tcpcb *tp)
 			return;
 		}
 	}
-	tw->tw_inpcb = inp;
 	/*
 	 * The tcptw will hold a reference on its inpcb until tcp_twclose
 	 * is called
 	 */
+	tw->tw_inpcb = inp;
 	in_pcbref(inp);	/* Reference from tw */
 
 	/*
@@ -674,58 +687,28 @@ tcp_tw_2msl_stop(struct tcptw *tw, int reuse)
 }
 
 struct tcptw *
-tcp_tw_2msl_reuse(void)
+tcp_tw_2msl_scan(int reuse)
 {
 	struct tcptw *tw;
 	struct inpcb *inp;
 
-	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
-
-	for (;;) {
-		TW_RLOCK(V_tw_lock);
-		tw = TAILQ_FIRST(&V_twq_2msl);
-		if (tw == NULL) {
-			TW_RUNLOCK(V_tw_lock);
-			break;
-		}
-		KASSERT(tw->tw_inpcb != NULL, ("%s: tw->tw_inpcb == NULL",
-		    __func__));
-
-		inp = tw->tw_inpcb;
-		in_pcbref(inp);
-		TW_RUNLOCK(V_tw_lock);
-
-		INP_WLOCK(inp);
-		tw = intotw(inp);
-		if (in_pcbrele_wlocked(inp)) {
-			KASSERT(tw == NULL, ("%s: held last inp reference but "
-			    "tw not NULL", __func__));
-			continue;
-		}
-
-		if (tw == NULL) {
-			/* tcp_twclose() has already been called */
-			INP_WUNLOCK(inp);
-			continue;
-		}
-
-		tcp_twclose(tw, 1);
-		break;
+#ifdef INVARIANTS
+	if (reuse) {
+		/*
+		 * pcbinfo lock is needed in reuse case to prevent deadlock
+		 * as two inpcb locks can be acquired simultaneously:
+		 *  - the inpcb transitioning to TIME_WAIT state in
+		 *    tcp_tw_start(),
+		 *  - the inpcb closed by tcp_twclose().
+		 */
+		INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
 	}
-
-	return (tw);
-}
-
-void
-tcp_tw_2msl_scan(void)
-{
-	struct tcptw *tw;
-	struct inpcb *inp;
+#endif
 
 	for (;;) {
 		TW_RLOCK(V_tw_lock);
 		tw = TAILQ_FIRST(&V_twq_2msl);
-		if (tw == NULL || tw->tw_time - ticks > 0) {
+		if (tw == NULL || (!reuse && (tw->tw_time - ticks) > 0)) {
 			TW_RUNLOCK(V_tw_lock);
 			break;
 		}
@@ -754,8 +737,10 @@ tcp_tw_2msl_scan(void)
 				continue;
 			}
 
-			tcp_twclose(tw, 0);
+			tcp_twclose(tw, reuse);
 			INP_INFO_WUNLOCK(&V_tcbinfo);
+			if (reuse)
+			    return tw;
 		} else {
 			/* INP_INFO lock is busy, continue later. */
 			INP_WLOCK(inp);
@@ -764,4 +749,6 @@ tcp_tw_2msl_scan(void)
 			break;
 		}
 	}
+
+	return NULL;
 }

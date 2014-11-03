@@ -183,7 +183,7 @@ tcp_detach(struct socket *so, struct inpcb *inp)
 		 *
 		 * XXXRW: Would it be cleaner to free the tcptw here?
 		 *
-		 * Astuce question indeed, from twtcp perspective there are
+		 * Astute question indeed, from twtcp perspective there are
 		 * three cases to consider:
 		 *
 		 * #1 tcp_detach is called at tcptw creation time by
