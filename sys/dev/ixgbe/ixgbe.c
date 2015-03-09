@@ -301,7 +301,7 @@ SYSCTL_INT(_hw_ix, OID_AUTO, enable_msix, CTLFLAG_RDTUN, &ixgbe_enable_msix, 0,
  */
 static int ixgbe_num_tx_queues = 0;
 TUNABLE_INT("hw.ixgbe.num_tx_queues", &ixgbe_num_tx_queues);
-SYSCTL_INT(_hw_ix, OID_AUTO, num_rx_queues, CTLFLAG_RDTUN, &ixgbe_num_tx_queues, 0,
+SYSCTL_INT(_hw_ix, OID_AUTO, num_tx_queues, CTLFLAG_RDTUN, &ixgbe_num_tx_queues, 0,
     "Number of tx queues to configure, 0 indicates autoconfigure");
 /*
  * Number of rx Queues, can be set to 0,
@@ -311,7 +311,7 @@ SYSCTL_INT(_hw_ix, OID_AUTO, num_rx_queues, CTLFLAG_RDTUN, &ixgbe_num_tx_queues,
  */
 static int ixgbe_num_rx_queues = 0;
 TUNABLE_INT("hw.ixgbe.num_rx_queues", &ixgbe_num_rx_queues);
-SYSCTL_INT(_hw_ix, OID_AUTO, num_tx_queues, CTLFLAG_RDTUN, &ixgbe_num_rx_queues, 0,
+SYSCTL_INT(_hw_ix, OID_AUTO, num_rx_queues, CTLFLAG_RDTUN, &ixgbe_num_rx_queues, 0,
     "Number of rx queues to configure, 0 indicates autoconfigure");
 
 /*
