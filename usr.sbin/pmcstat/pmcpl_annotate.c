@@ -81,7 +81,7 @@ pmcpl_annotate_process(struct pmcstat_process *pp, struct pmcstat_pmcrecord *pmc
 {
 	struct pmcstat_pcmap *map;
 	struct pmcstat_symbol *sym;
-	uintfptr_t newpc;
+	uintfptr_t newpc, start, end, pc;
 	struct pmcstat_image *image;
 
 	(void) pmcr; (void) nsamples; (void) usermode; (void) cpu;
@@ -102,10 +102,17 @@ pmcpl_annotate_process(struct pmcstat_process *pp, struct pmcstat_pmcrecord *pmc
 	if (sym == NULL)
 		return;
 
+	start = sym->ps_start + image->pi_vaddr;
+	end = sym->ps_end + image->pi_vaddr;
+	if ((newpc >= start) && (newpc < end)) {
+		pc = newpc;
+	} else {
+		pc = cc[0];
+	}
+
 	fprintf(args.pa_graphfile, "%p %s 0x%jx 0x%jx\n",
-		(void *)cc[0],
+		(void *)pc,
 		pmcstat_string_unintern(sym->ps_name),
-		(uintmax_t)(sym->ps_start +
-		image->pi_vaddr), (uintmax_t)(sym->ps_end +
-		image->pi_vaddr));
+		(uintmax_t)start,
+		(uintmax_t)end);
 }
