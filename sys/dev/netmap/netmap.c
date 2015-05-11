@@ -2408,8 +2408,11 @@ netmap_start(struct ifnet *ifp, struct mbuf *m)
 		m_freem(m);
 		return EINVAL;
 	}
+
 	if (na->na_bdg)
 		return bdg_netmap_start(ifp, m);
+
+	ETHER_BPF_MTAP(ifp, m);
 
 	na->nm_lock(ifp, NETMAP_CORE_LOCK, 0);
 	if (kring->nr_hwavail >= lim) {
