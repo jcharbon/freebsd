@@ -1059,7 +1059,7 @@ _callout_stop_safe(c, safe)
 {
 	struct callout_cpu *cc, *old_cc;
 	struct lock_class *class;
-	int direct, sq_locked, use_lock;
+	int direct, sq_locked, use_lock, running;
 
 	/*
 	 * Some old subsystems don't hold Giant while running a callout_stop(),
@@ -1222,8 +1222,14 @@ again:
 		TAILQ_REMOVE(&cc->cc_expireq, c, c_links.tqe);
 	callout_cc_del(c, cc);
 
+	/*
+	 * If we are asked to stop a callout which is currently in progress
+	 * and indeed impossible to stop just return 0.
+	 */
+	running = !!(cc->cc_exec_entity[direct].cc_curr == c);
+
 	CC_UNLOCK(cc);
-	return (1);
+	return (!running);
 }
 
 void
