@@ -40,6 +40,8 @@
 
 #include "ixgbe.h"
 
+#include <sys/sched.h>
+
 /*********************************************************************
  *  Set this to one to display debug statistics
  *********************************************************************/
@@ -261,6 +263,10 @@ SYSCTL_INT(_hw_ix, OID_AUTO, tx_process_limit, CTLFLAG_RDTUN,
     &ixgbe_tx_process_limit, 0,
     "Maximum number of sent packets to process at a time,"
     "-1 means unlimited");
+
+/* Bind taskqueue thread to same cpu than ithread */
+static int ixgbe_bind_taskqueue = 0;
+TUNABLE_INT("hw.ix.bind_taskqueue", &ixgbe_bind_taskqueue);
 
 /*
 ** Smart speed setting, default to on
@@ -1279,6 +1285,14 @@ ixgbe_handle_que(void *context, int pending)
 	bool		more;
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
+
+		if (ixgbe_bind_taskqueue && (que->cpu != curcpu)) {
+			/* Bind to same cpu than ithread */
+			thread_lock(curthread);
+			sched_bind(curthread, que->cpu);
+			thread_unlock(curthread);
+		}
+
 		more = ixgbe_rxeof(que);
 		IXGBE_TX_LOCK(txr);
 		ixgbe_txeof(txr);
@@ -1386,6 +1400,7 @@ ixgbe_msix_que(void *arg)
 		return;
 
 	ixgbe_disable_queue(adapter, que->msix);
+	que->cpu = curcpu;
 	++que->irqs;
 
 	more = ixgbe_rxeof(que);
